@@ -1,0 +1,39 @@
+int trigPin = 10;     // HC-SR04 Trig pin
+int echoPin = 11;     // HC-SR04 Echo pin
+int ledPin = 3;      // LED pin (changed from 9 to avoid conflict)
+long duration;
+float distance;
+
+void setup() {
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  pinMode(ledPin, OUTPUT);      
+  Serial.begin(9600);  // Initialize serial communication
+}
+
+void loop() {
+  // Trigger ultrasonic pulse
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  // Measure echo duration
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * 0.034 / 2;  // Calculate distance (cm)
+
+  // Print distance to Serial Monitor
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  // Turn on LED if object is closer than 20 cm
+  if (distance > 0 && distance < 20) {  // Added distance > 0 check
+    digitalWrite(ledPin, HIGH);
+    Serial.println("LED ON");
+  } else {
+    digitalWrite(ledPin, LOW);
+  }
+
+  delay(1000);  // Delay between readings

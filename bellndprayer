@@ -1,0 +1,155 @@
+#include <LiquidCrystal.h>
+#include <DS3231.h>
+#include <Wire.h>
+
+// Initialize the LCD with the pins we're using
+LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
+
+// Initialize the RTC module
+DS3231 rtc;
+
+// Buzzer pin
+const int buzzerPin = 9;
+
+// Structure for schedule items
+struct ScheduleItem {
+  char type; // 'P' for prayer, 'C' for class
+  String name;
+  byte hour;
+  byte minute;
+  byte duration; // in minutes (for classes)
+  byte days; // bitmask for days (1=Sun, 2=Mon, 4=Tue, 8=Wed, 16=Thu, 32=Fri, 64=Sat)
+};
+
+// School schedule (adjust times as needed)
+ScheduleItem schedule[] = {
+  {'P', "Morning Prayer", 7, 30, 0, 0b00111110}, // Mon-Fri
+  {'C', "First Period", 8, 0, 45, 0b00111110},
+  {'C', "Second Period", 8, 50, 45, 0b00111110},
+  {'P', "Midday Prayer", 12, 30, 0, 0b00111110},
+  {'C', "Lunch Break", 13, 0, 45, 0b00111110},
+  {'C', "Third Period", 13, 45, 45, 0b00111110},
+  {'P', "Afternoon Prayer", 15, 30, 0, 0b00111110}
+};
+
+const int scheduleCount = sizeof(schedule) / sizeof(schedule[0]);
+
+// Variables for tracking current period
+String currentEvent = "";
+unsigned long eventEndTime = 0;
+bool isEventActive = false;
+
+void setup() {
+  // Initialize LCD
+  lcd.begin(16, 2);
+  
+  // Initialize RTC
+  Wire.begin();
+  rtc.begin();
+  
+  // Uncomment to set the RTC time (do this once, then comment again)
+  // rtc.setDOW(SUNDAY);     // Set Day-of-Week (SUNDAY, MONDAY, etc.)
+  // rtc.setTime(12, 0, 0);  // Set the time to 12:00:00 (24hr format)
+  // rtc.setDate(1, 1, 2023); // Set the date to January 1st, 2023
+  
+  // Initialize buzzer
+  pinMode(buzzerPin, OUTPUT);
+  
+  // Welcome message
+  lcd.print("School Notifier");
+  lcd.setCursor(0, 1);
+  lcd.print("Initializing...");
+  delay(2000);
+  lcd.clear();
+}
+
+void loop() {
+  // Get current time from RTC
+  Time t = rtc.getTime();
+  byte dow = rtc.getDOW(); // Day of week (1=Sun, 2=Mon, etc.)
+  byte dayMask = 1 << (dow - 1);
+  
+  // Check each schedule item
+  for (int i = 0; i < scheduleCount; i++) {
+    ScheduleItem item = schedule[i];
+    
+    // Check if today is in the days bitmask
+    if (item.days & dayMask) {
+      // Check if it's time for this event
+      if (t.hour == item.hour && t.min == item.minute && !isEventActive) {
+        triggerEvent(item);
+      }
+    }
+  }
+  
+  // Check if current event should end
+  if (isEventActive && millis() >= eventEndTime) {
+    endEvent();
+  }
+  
+  // Display current time and event
+  updateDisplay(t);
+  
+  delay(1000); // Update every second
+}
+
+void triggerEvent(ScheduleItem item) {
+  currentEvent = item.name;
+  isEventActive = true;
+  
+  // Set end time (current time + duration in milliseconds)
+  if (item.duration > 0) {
+    eventEndTime = millis() + (item.duration * 60000UL);
+  } else {
+    // For prayers without duration, notify for 1 minute
+    eventEndTime = millis() + 60000UL;
+  }
+  
+  // Play notification sound
+  playNotificationTone(item.type);
+  
+  // Display event on LCD
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("NOW: ");
+  lcd.print(item.name);
+}
+
+void endEvent() {
+  isEventActive = false;
+  currentEvent = "";
+  lcd.clear();
+}
+
+void updateDisplay(Time t) {
+  // Display current time on second line
+  lcd.setCursor(0, 1);
+  if (t.hour < 10) lcd.print("0");
+  lcd.print(t.hour);
+  lcd.print(":");
+  if (t.min < 10) lcd.print("0");
+  lcd.print(t.min);
+  lcd.print(":");
+  if (t.sec < 10) lcd.print("0");
+  lcd.print(t.sec);
+  
+  // Display current event if active
+  if (isEventActive) {
+    lcd.setCursor(0, 0);
+    lcd.print("NOW: ");
+    lcd.print(currentEvent);
+  }
+}
+
+void playNotificationTone(char type) {
+  if (type == 'P') {
+    // Prayer notification tone (3 beeps)
+    for (int i = 0; i < 3; i++) {
+      tone(buzzerPin, 1000, 200);
+      delay(300);
+    }
+  } else {
+    // Class period tone (1 long beep)
+    tone(buzzerPin, 800, 500);
+  }
+}
